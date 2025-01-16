@@ -1,7 +1,8 @@
 library(tidyverse)
 library(ggridges)
 library(patchwork)
-
+library(ArchaeoPhases) #IC with HPD
+library(coda)
 
 #### Nimble options 
 nimbleOptions(buildInterfacesForCompiledNestedNimbleFunctions = TRUE)
@@ -107,15 +108,28 @@ get_mcmc <- function(samp, k, path) {
   dev.off()
   
   
+}
+
+get_step_br <- function(samp, path,n_monitors) {
+  L <- list() #list de mcmc objects
+  m = length(samp) #m chains with diff init
+  n = length(samp[[1]][1,])/n_monitors
+  for (i in 1:m) {
+    L[[i]] <- coda::mcmc(samp[[i]][, 0: n] * samp[[i]][, (n+1): (2*n)])
+    colnames(L[[i]]) <- paste0("ZB[",1:n, "]")
+    
+  }
+  mcmc_list <- mcmc.list(L) #
   
+  pdf(path)
+  plot(mcmc_list)
+  coda::autocorr.plot(mcmc_list)
+  dev.off()
 }
 
 
 #-------------------------------------------------------@
 #### Visualisation ####
-
-
-
 
 
 

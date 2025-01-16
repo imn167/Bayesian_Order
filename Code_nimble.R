@@ -17,6 +17,14 @@ cumsum_nimble  <- nimbleFunction(
         return(v)
     }
 )
+################ nimble_sort #######
+nimble_sort <- nimbleFunction(
+  run = function(x = double(1)) {
+    returnType(double(1))
+    return(sort(x))
+  }
+)
+
 ################ distribution shrinkage #######
 dshrink  <- nimbleFunction(
   run = function(x = double(0), s = double(0), log = integer(0, default = 1)) {
@@ -45,7 +53,7 @@ rshrink  <- nimbleFunction(
    # range = c(0, Inf))))
 
 ############################################@
-###### Melange Uniforme et ordre ########
+###### MixUnif ########
 mix_unif  <- nimbleCode({
   #modele
   for (i in 1:N) {
@@ -98,7 +106,32 @@ mix_unifC14  <- nimbleCode({
 })
 
 ############################################@
-##### contrainte avec uniforme ########
+
+#### Reduc Shift ####
+
+unfi_shift_order <-  nimbleCode(
+  #likelyhood 
+  for (i in 1:N) {
+    M[i] ~ dnorm(mu[i], sd = tau[i])
+  }
+  #Order according to the uniform shift 
+  s ~ dunif(min = T1, max = T2)
+  mu[0] ~ dunif(min = T1, max = (T2-s))
+  
+  mu[N] <- s + mu[0], 
+  
+  for (i in 1:(N-2)) {
+    u[i] ~ dunif(mu[0], mu[N])
+  }
+  
+  mu[2:N] <- nimble_sort(u[])
+  
+  
+)
+
+############################################@
+
+##### Ordre ########
 
 ordre <- nimbleCode({
   #modèle
@@ -136,7 +169,7 @@ orderC14  <- nimbleCode({
 })
 ####################################################@
 #####################################################@
-#### sans contraite d'ordre ####
+#### Uniforme ####
 
 uniform <- nimbleCode({
   #model
@@ -180,7 +213,7 @@ ineg_large  <- nimbleCode({
   }
 })
 ####################################################@
-#### inversion des estimation par epsilon (cas de corrélation) ####
+#### Inversion ####
 inv_epsilon  <- nimbleCode({
   #model
   for (i in 1:N) {
@@ -199,8 +232,9 @@ inv_epsilon  <- nimbleCode({
      mu[i]  <- (v[i-1] + Z[i - 1] * (v[i] - v[i - 1])) * (T2 - T1) + T1
   }
 })
+###======================================================================@
 
-### Inversion par une Be(1,n) ####
+### BR p fixe ####
 inv_beta  <- nimbleCode({
   #model
   for (i in 1:N) {
@@ -292,7 +326,7 @@ order_A <- nimbleCode(
 
 
 
-##### Modele Hierarchic sur les (pi)i######
+##### BR pi Unif ######
 
 
 beta_pi <- nimbleCode({
@@ -302,6 +336,28 @@ beta_pi <- nimbleCode({
   }
   for (i in 1:N) {
     p[i] ~ dunif(min = alpha, max = beta)
+    Z1[i]  ~ dbinom(size = 1, prob = p[i])
+    Z[i]  <- (Z1[i] - .5) * 2 #{-1, 1}
+    b[i]  ~ dbeta(shape1 = 1, shape2 = N)
+  }
+  for (i in 1:(N + 1)) {
+    e[i]  ~ dexp(rate = 1)
+  }
+  v[] <- cumsum_nimble(e[1:N]) / sum(e[])
+  for (i in 1:N) {
+    mu[i]  <- (v[i] + Z[i] * b[i]) * (T2 - T1) + T1
+  }
+})
+
+##### BR pi beta ####
+
+br_pi_beta <- nimbleCode({
+  #model
+  for (i in 1:N) {
+    M[i]  ~ dnorm(mean = mu[i], sd = tau[i])
+  }
+  for (i in 1:N) {
+    p[i] ~ dbeta(shape1 = alpha, shape2 =  alpha) #having a 
     Z1[i]  ~ dbinom(size = 1, prob = p[i])
     Z[i]  <- (Z1[i] - .5) * 2 #{-1, 1}
     b[i]  ~ dbeta(shape1 = 1, shape2 = N)
@@ -445,7 +501,7 @@ melange_beta  <- nimbleCode({
 })
 
 
-####################################################@
+########=====================================================================================================
 #### Ecriture du data frame pour ggridge ####
 ## fonction qui reconstruit les données simulées
 #pour le graph de densitées sur ggridges  
