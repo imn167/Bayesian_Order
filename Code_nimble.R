@@ -19,12 +19,31 @@ cumsum_nimble  <- nimbleFunction(
 )
 ################ nimble_sort #######
 nimble_sort <- nimbleFunction(
-  run = function(x = double(1)) {
+  run = function(x = double(1)){
+    
+    l = length(x)
+    lx = l-1
+    madeChange <- TRUE
+    while (madeChange) {
+      madeChange <- FALSE
+      for (i in 1:lx) {
+        i1 <- i + 1
+        if (x[i] > x[i1]) { #if equal no need to change 
+          tmp <- x[i]
+          x[i] <- x[i1]
+          x[i1] <- tmp
+          madeChange <- TRUE
+        }
+      }
+    }
+    return(x)
     returnType(double(1))
-    return(sort(x))
+    
   }
 )
 
+sort_x <- 
+  
 ################ distribution shrinkage #######
 dshrink  <- nimbleFunction(
   run = function(x = double(0), s = double(0), log = integer(0, default = 1)) {
@@ -109,25 +128,26 @@ mix_unifC14  <- nimbleCode({
 
 #### Reduc Shift ####
 
-unfi_shift_order <-  nimbleCode(
+unif_shift_order <-  nimbleCode({
+  
   #likelyhood 
   for (i in 1:N) {
     M[i] ~ dnorm(mu[i], sd = tau[i])
   }
   #Order according to the uniform shift 
-  s ~ dunif(min = T1, max = T2)
-  mu[0] ~ dunif(min = T1, max = (T2-s))
-  
-  mu[N] <- s + mu[0], 
-  
+  s ~ dunif(min = 0, max = (T2-T1))
+  mu[1] ~ dunif(min = T1, max = (T2-s))
+  mu[N] <- s + mu[1]
   for (i in 1:(N-2)) {
-    u[i] ~ dunif(mu[0], mu[N])
+    u[i] ~ dunif(mu[1], mu[N])
   }
   
-  mu[2:N] <- nimble_sort(u[])
+  mu[2:(N-1)] <- nimble_sort(u[])
   
-  
-)
+})
+
+
+
 
 ############################################@
 

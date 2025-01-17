@@ -30,7 +30,7 @@ prior_Et_order <- read.csv("./BR_priors/Et_prior_order.csv", row.names = 1)
 
 #####@
 path0 = 'SimuSteierRom/'
-Delta = c(0,1,2,5,10,50,100, 120, 150, 180, 200) #difference between the ages / uniform difference 
+Delta = c(0,1,2,5,10,50,100,120,150,180,200) #difference between the ages / uniform difference 
 N <- 10
 sigma <- 100
 l <- length(Delta) 
@@ -81,14 +81,18 @@ for (i in seq_along(Delta)) {
   plot_data[[i]] <- p
   
   
-  
+  s =runif(1, 0, (T2-T1))
+  m1 = runif(1, T1, (T2-s))
+  u =  runif((N-2), m1, m1 + s)
+  mu = c(m1, sort(u), m1 + s)
+  inits = list(s = s , mu = mu, u = u)
   #The number of samples doesn't change, we wil only call the model once and then setdata for the followinf cases 
   #### Bayesian Model ####
   if (i == 1) {
-    
     #### Uniform Order ###
-    plain_order <- nimbleModel(ordre, list(N = N), data = list(M = sim$Mesure, tau = sim$std, T1 =T1, T2 = T2 ),
-                               inits = list(e = rexp(N+1)), dimensions = list(v =N, mu =N))
+    plain_order <- nimbleModel(unif_shift_order, list(N = N), 
+                               data = list(M = sim$Mesure, tau = sim$std, T1 =T1, T2 = T2 ), 
+                               dimensions = list(u = (N-2)))
     cord <-  compileNimble(plain_order)
     conf_ord <-  configureMCMC(plain_order, monitors = "mu", thin = 5)
     mcmc <- buildMCMC(conf_ord)
@@ -115,12 +119,11 @@ for (i in seq_along(Delta)) {
   cord$setData(list(M = sim$Mesure, tau = sim$std, T1 = T1, T2= T2)) #order
   cord_betai$setData(list(M = sim$Mesure, tau = sim$std, T1 = T1, T2 = T2)) #Beta_pi
   
-  
   #### MCMC run 
   samp_betai <- runMCMC(cmcmc_betai, niter = 30000, nburnin = 22000, nchains = 3,
                         progressBar = TRUE, samplesAsCodaMCMC = TRUE)
   samp_order <-  runMCMC(cmcmc, niter = 26000, nburnin = 18000, nchains = 3,
-                         progressBar = TRUE, samplesAsCodaMCMC = TRUE)
+                         progressBar = TRUE, samplesAsCodaMCMC = TRUE, inits = inits)
   
   #### MCMC Plot ####
   
@@ -135,6 +138,9 @@ for (i in seq_along(Delta)) {
   get_mcmc(samp_betai, 1, path_cv)
   path_cv <- paste0(path0, "Comparaison/mcmc_cv/ZB_delta", Delta[i], ".pdf")
   beta <- get_step_br(samp_betai, path_cv, 4)
+  path_cv <- paste0(path0, "Comparaison/mcmc_cv/order_delta", Delta[i], ".pdf")
+  get_mcmc(samp_order, 0, path_cv)
+  
   
   
   ## aggregating chains 
@@ -238,11 +244,12 @@ ic_shift <- data.frame(inf = c(apply(shift_order, 1, interval_credible)[1,],
                                apply(shift_rademacher, 1, interval_credible)[1,]), 
                        sup = c(apply(shift_order, 1, interval_credible)[2,], 
                                apply(shift_rademacher, 1, interval_credible)[2,]),
-                       model = c(rep("order", length(Delta)), rep("BR", length(Delta))), Delta = factor(rep(Delta, 2), 
+                       model = c(rep("order(uniform_shift)", length(Delta)), rep("BR", length(Delta))), Delta = factor(rep(Delta, 2), 
                       levels = as.character(c(Delta, Delta[length(Delta)] + 1))) 
 )
 ic_shift <- ic_shift %>% add_row(inf = interval_credible(prior_Et$X0)[1], sup = interval_credible(prior_Et$X0)[2], model = "Et(BR_prior)", Delta = as.factor(201)) %>% 
-  add_row(inf = interval_credible(prior_Et_order$X0)[1], sup = interval_credible(prior_Et_order$X0)[2], model = "Et(order_prior)", Delta = as.factor(201))
+  add_row(inf = interval_credible(prior_Et_order$X0)[1], sup = interval_credible(prior_Et_order$X0)[2], 
+          model = "Et(order_prior)", Delta = as.factor(201))
 ic_shift
 sapply(ic_shift, class)
 graph_shift <-  ic_shift %>% ggplot(aes(x = Delta, ymin = inf, ymax = sup, color = model)) + 
@@ -265,7 +272,8 @@ meanZ %>% pivot_longer(!delta) %>%mutate(name = factor(name, levels = paste0("Z[
 
 # have the same scale for mesure (y)
 for (i in 1:l) {
-  print(plot_data[[i]] +geom_segment(aes(x= periode_T1[i], xend = periode_T2[i], y = sim$Depth[1], yend = sim$Depth[1]), linewidth = 0.5, color = pallet[3]) + labs(title = paste0("Delta = ",Delta[i])) + theme(axis.text.x = element_text(angle = 45)) +
+  print(plot_data[[i]] +geom_segment(aes(x= periode_T1[i], xend = periode_T2[i], y = sim$Depth[1], yend = sim$Depth[1]), linewidth = 0.5, color = pallet[3]) +
+          labs(title = paste0("Delta = ",Delta[i])) + theme(axis.text.x = element_text(angle = 45)) +
     # graph_biais[[i]] + labs(title = paste0("delta = ", Delta[i]))
       graph_post_prior[[i]] + labs(title = paste0("delta = ", Delta[i])) + theme(axis.text.x = element_text(angle = 45)) +
       graph_comparing[[i]] + labs(title = paste0("delta = ", Delta[i])) + theme(axis.text.x = element_text(angle = 45))  )
@@ -288,7 +296,7 @@ for (i in 1:l) {
 #---------------------------------------------------------------@
 ###### Testing 
 
-samp_zi <- aggregat_samp(samp_betai)[, 1:10]
+nimble_sort(runif(12))
 ##-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------@
 
 
