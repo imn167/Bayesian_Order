@@ -136,13 +136,16 @@ unif_shift_order <-  nimbleCode({
   }
   #Order according to the uniform shift 
   s ~ dunif(min = 0, max = (T2-T1))
-  mu[1] ~ dunif(min = T1, max = (T2-s))
+  debut ~ dunif(min = T1, max = (T2-s))
+  mu[1] <- debut
   mu[N] <- s + mu[1]
-  for (i in 1:(N-2)) {
-    u[i] ~ dunif(mu[1], mu[N])
+  for (i in 1:(N-1)) {
+    e[i] ~ dexp(rate = 1)
   }
+  es <- sum(e[])
+  v[] <- cumsum_nimble(e[1:(N-2)]) /es
+  mu[2:(N-1)] <- v[] * (mu[N]-mu[1]) + mu[1]
   
-  mu[2:(N-1)] <- nimble_sort(u[])
   
 })
 
@@ -254,7 +257,39 @@ inv_epsilon  <- nimbleCode({
 })
 ###======================================================================@
 
-### BR p fixe ####
+
+### BR(p) unif_shift ###
+unif_shift_BR <-  nimbleCode({
+  
+  #likelyhood 
+  for (i in 1:N) {
+    M[i] ~ dnorm(mu[i], sd = tau[i])
+  }
+  #Order according to the uniform shift 
+  s ~ dunif(min = 0, max = (T2-T1))
+  debut ~ dunif(min = T1, max = (T2-s))
+  
+  for (i in 1:(N-1)) {
+    e[i] ~ dexp(rate = 1)
+  }
+  es <- sum(e[])
+  v[] <- cumsum_nimble(e[1:(N-2)]) /es #order 
+  
+  ##
+  for (i in 1:N) {
+    Z1[i]  ~ dbinom(size = 1, prob = p)
+    Z[i]  <- (Z1[i] - .5) * 2 #{-1, 1}
+    b[i]  ~ dbeta(shape1 = 1, shape2 = N)
+  }
+  
+  mu[2:(N-1)] <-( v[] + Z[2: (N-1)] * b[2:(N-1)])* (mu[N]-mu[1]) + mu[1]
+  mu[1] <- debut + Z[1]*b[1]
+  mu[N] <- s + mu[1] + Z[N]*b[N] 
+  
+})
+
+
+ ### BR p fixe ####
 inv_beta  <- nimbleCode({
   #model
   for (i in 1:N) {
@@ -343,6 +378,37 @@ order_A <- nimbleCode(
     }
   }
 )
+
+### BR(pi) unif_shift ###
+unif_shift_BR_pi <-  nimbleCode({
+  
+  #likelyhood 
+  for (i in 1:N) {
+    M[i] ~ dnorm(mu[i], sd = tau[i])
+  }
+  #Order according to the uniform shift 
+  s ~ dunif(min = 0, max = (T2-T1))
+  debut ~ dunif(min = T1, max = (T2-s))
+  
+  for (i in 1:(N-1)) {
+    e[i] ~ dexp(rate = 1)
+  }
+  es <- sum(e[])
+  v[] <- cumsum_nimble(e[1:(N-2)]) /es #order 
+  
+  ##
+  for (i in 1:N) {
+    p[i] ~ dunif(min = alpha, max = beta)
+    Z1[i]  ~ dbinom(size = 1, prob = p[i])
+    Z[i]  <- (Z1[i] - .5) * 2 #{-1, 1}
+    b[i]  ~ dbeta(shape1 = 1, shape2 = N)
+  }
+  
+  mu[2:(N-1)] <-( v[] + Z[2: (N-1)] * b[2:(N-1)])* (mu[N]-mu[1]) + mu[1]
+  mu[1] <- debut + Z[1]*b[1]
+  mu[N] <- s + mu[1] + Z[N]*b[N] 
+  
+})
 
 
 

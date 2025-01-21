@@ -26,24 +26,37 @@ graph_ic <- list()
 graph_pi <- list()
 median_pi <- list()
 traj_pi <- list() #median
+PostShiftBetai <- c()
+PostShiftOrder <- c()
 #presumely the oldest ages for both models  
 ic_order <- c()
 ic_br <- c()
 T1 <- 1000-3*sigma 
 T2 <- 1000+3*sigma
 
+
+
 for (j in seq_along(n)) {
   sim <- simulated_data(n[j], delta, sigma, 123) #number of samples growing 
   
   
   #### Bayesian Model ####
+  
+  ### initialisation for the order shift 
+  s =runif(1, 0, (T2-T1))
+  m1 = runif(1, T1, (T2-s))
+  e =  rexp(n[j]-1)
+  
+  inits_order = list( s = s , e = e, debut = m1)
+  inits_br = list(s = s, e = e, debut = m1, b = rbeta(n[j], 1, n[j]), Z1 = rbinom(n[j], 1, .5), p = runif(n[j]))
+  
   #### Applying the MCMC algorithm for BR and order bayesian model ####
   
   #### Uniform Order ###
-  plain_order <- nimbleModel(ordre, list(N = n[j]), data = list(M = sim$Mesure, tau = sim$std, T1 =T1, T2 = T2 ),
-                             inits = list(e = rexp(n[j]+1)), dimensions = list(v =n[j], mu =n[j]))
+  plain_order <- nimbleModel(unif_shift_order, list(N = n[j]), data = list(M = sim$Mesure, tau = sim$std, T1 =T1, T2 = T2 ),
+                             inits = inits_order, dimensions = list(v = (n[j]-2), mu = n[j], e = (n[j]-1)))
   cord <-  compileNimble(plain_order)
-  conf_ord <-  configureMCMC(plain_order, monitors = "mu", thin = 5)
+  conf_ord <-  configureMCMC(plain_order, monitors = c("mu", "s"), thin = 5)
   mcmc <- buildMCMC(conf_ord)
   cmcmc <-  compileNimble(mcmc)
   
@@ -52,14 +65,13 @@ for (j in seq_along(n)) {
   
   
   #### Beta-Rademacher ###
-  rademacher_betai <- nimbleModel(beta_pi, list(N=n[j], alpha = 0, beta = 1), 
+  rademacher_betai <- nimbleModel(unif_shift_BR_pi, list(N=n[j], alpha = 0, beta = 1), 
                                   data = list(M = sim$Mesure, tau = sim$std, T1 = T1, T2 = T2),
-                                  inits = list(e = rexp(n[j]+1), Z1 = rbinom(n[j], 1, .5), 
-                                               b = rbeta(n[j], 1, n[j]), p = runif(n[j])),
-                                  dimensions = list(v = n[j]))
+                                  inits = inits_br,
+                                  dimensions = list(v = (n[j]-2), mu = n[j], e = (n[j]-1), Z = n[j], b = n[j]))
   
   cord_betai <- compileNimble(rademacher_betai)
-  conford_betai <- configureMCMC(rademacher_betai, monitors = c("mu", "Z", "p", "b"), thin = 5)
+  conford_betai <- configureMCMC(rademacher_betai, monitors = c("mu", "Z", "p", "b", "s"), thin = 5)
   mcmc_betai <- buildMCMC(conford_betai)
   cmcmc_betai <- compileNimble(mcmc_betai)
   
@@ -74,11 +86,19 @@ for (j in seq_along(n)) {
   #### aggregating chains ####
   samp_pi <- aggregat_samp(samp_betai)[, (3*n[j] + 1): (4*n[j])] #p_1 ... P_n(j)
   sampBetai <- aggregat_samp(samp_betai)[, (2*n[j]+1):(3*n[j])] # mu_1 ... mu_n(j)
-  sampOrder <- aggregat_samp(samp_order)
+  sampOrder <- aggregat_samp(samp_order)[, 1:n[j]]
+  sampShiftBetai <- aggregat_samp(samp_betai)[, (4*n[j] + 1)] #s
+  sampShiftOrder <- aggregat_samp(samp_order)[, (n[j]+1)]
   
-  ic_o <- data.frame(t(apply(sampOrder, 2, interval_credible)[1:2, ])-1000, ages = factor(colnames(sampOrder), levels = colnames(sampOrder)), mesures = sim$Mesure-1000, model = rep("order", n[j]))
+  PostShiftOrder <- cbind(PostShiftOrder, sampShiftOrder)
+  PostShiftBetai <- cbind(PostShiftBetai, sampShiftBetai)
   
-  ic <- data.frame(t(apply(sampBetai, 2, interval_credible)[1:2, ])-1000, ages = factor(colnames(sampBetai), levels = colnames(sampOrder)), mesures = sim$Mesure-1000, model = rep("BR", n[j]))
+  ###@
+  ic_o <- data.frame(t(apply(sampOrder, 2, interval_credible)[1:2, ])-1000, ages = factor(colnames(sampOrder), levels = colnames(sampOrder)), 
+                     mesures = sim$Mesure-1000, model = rep("order", n[j]))
+  
+  ic <- data.frame(t(apply(sampBetai, 2, interval_credible)[1:2, ])-1000, ages = factor(colnames(sampBetai), levels = colnames(sampOrder)), 
+                   mesures = sim$Mesure-1000, model = rep("BR", n[j]))
   
   
   graph_ic[[j]] <- ic %>% bind_rows(ic_o) %>% ggplot(aes(x = ages, ymin = X1, ymax = X2, group = model, colour = model)) + geom_linerange(position = position_dodge(width = .2)) +theme_imene() + geom_point(aes(ages, mesures), inherit.aes = F) +
@@ -102,7 +122,6 @@ for (j in seq_along(n)) {
 #----------------------------------------------------------------------------------@
 ##### Creating the graphics for the latest age (comparaison with order) ########
 
-
 ic_order <- data.frame(inf = ic_order[,1], sup = ic_order[,2], N = factor(n, levels = as.character(n)), model = rep("order", length(n)))
 ic_br <- data.frame(inf = ic_br[,1], sup = ic_br[,2], N = factor(n, levels = as.character(n)), model = rep("BR", length(n)))
 ic_max <- ic_order %>% bind_rows(ic_br)
@@ -123,7 +142,16 @@ for (j in 1:(l-1)) {
   # ggsave(paste0(path_graph, "/Growing_n/pi_n", n[j], ".png"), width = 13, height = 7)
 }
 
-traj_pi[[10]]
+SBetai <- data.frame(inf = apply(PostShiftBetai, 2, interval_hdr, level = .95)[1, ], 
+                     sup = apply(PostShiftBetai, 2, interval_hdr, level = .95)[2, ], N = n) 
+SBetai%>% ggplot(aes(x = N, ymin = inf, ymax = sup)) +
+  geom_linerange()
+
+
+SOrder <- data.frame(inf = apply(PostShiftOrder, 2, interval_hdr, level = .95)[1, ], 
+                     sup = apply(PostShiftOrder, 2, interval_hdr, level = .95)[2, ], N = n) 
+SOrder%>% ggplot(aes(x = N, ymin = inf, ymax = sup)) +
+  geom_linerange() + theme_imene()
 
 
 data.frame(Median = apply(samp_pi, 2, median), names = ic_pi$ages) %>% ggplot(aes(names, Median, group = 1)) + geom_point(size = 1) +

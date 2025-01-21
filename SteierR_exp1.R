@@ -80,19 +80,19 @@ for (i in seq_along(Delta)) {
   
   plot_data[[i]] <- p
   
-  
+  ### initialisation for the order shift 
   s =runif(1, 0, (T2-T1))
   m1 = runif(1, T1, (T2-s))
-  u =  runif((N-2), m1, m1 + s)
-  mu = c(m1, sort(u), m1 + s)
-  inits = list(s = s , mu = mu, u = u)
-  #The number of samples doesn't change, we wil only call the model once and then setdata for the followinf cases 
+  e =  rexp(N-1)
+  
+  inits_order = list( s = s , e = e, debut = m1)
+  inits_br = list(s = s, e = e, debut = m1, b = rbeta(N, 1, N), Z1 = rbinom(N, 1, .5), p = runif(N))
   #### Bayesian Model ####
   if (i == 1) {
     #### Uniform Order ###
     plain_order <- nimbleModel(unif_shift_order, list(N = N), 
                                data = list(M = sim$Mesure, tau = sim$std, T1 =T1, T2 = T2 ), 
-                               dimensions = list(u = (N-2)))
+                               dimensions = list(v = (N-2), mu = N, e = (N-1)), inits = inits_order)
     cord <-  compileNimble(plain_order)
     conf_ord <-  configureMCMC(plain_order, monitors = "mu", thin = 5)
     mcmc <- buildMCMC(conf_ord)
@@ -100,18 +100,15 @@ for (i in seq_along(Delta)) {
     
     
     #### Beta-Rademacher ###
-    rademacher_betai <- nimbleModel(beta_pi, list(N=N, alpha = 0, beta = 1), 
+    rademacher_betai <- nimbleModel(unif_shift_BR_pi, list(N=N, alpha = 0, beta = 1), 
                                     data = list(M = sim$Mesure, tau = sim$std, T1 = T1, T2 = T2),
-                                    inits = list(e = rexp(N+1), Z1 = rbinom(N, 1, .5), 
-                                                 b = rbeta(N, 1, N), p = runif(N)),
-                                    dimensions = list(v = N))
+                                    inits = inits_br,
+                                    dimensions = list(v = (N-2), mu = N, e = (N-1), Z = N, b = N))
     
     cord_betai <- compileNimble(rademacher_betai)
-    conford_betai <- configureMCMC(rademacher_betai, monitors = c("mu", "Z", "p", "b"), thin = 5)
+    conford_betai <- configureMCMC(rademacher_betai, monitors = c("mu", "Z", "b", "p"), thin = 5)
     mcmc_betai <- buildMCMC(conford_betai)
     cmcmc_betai <- compileNimble(mcmc_betai)
-    
-    
     
   }
   
@@ -121,9 +118,9 @@ for (i in seq_along(Delta)) {
   
   #### MCMC run 
   samp_betai <- runMCMC(cmcmc_betai, niter = 30000, nburnin = 22000, nchains = 3,
-                        progressBar = TRUE, samplesAsCodaMCMC = TRUE)
+                        progressBar = TRUE, samplesAsCodaMCMC = TRUE, inits = inits_br)
   samp_order <-  runMCMC(cmcmc, niter = 26000, nburnin = 18000, nchains = 3,
-                         progressBar = TRUE, samplesAsCodaMCMC = TRUE, inits = inits)
+                         progressBar = TRUE, samplesAsCodaMCMC = TRUE, inits = inits_order)
   
   #### MCMC Plot ####
   
@@ -137,7 +134,7 @@ for (i in seq_along(Delta)) {
   path_cv <- paste0(path0, "Comparaison/mcmc_cv/beta_delta", Delta[i], ".pdf")
   get_mcmc(samp_betai, 1, path_cv)
   path_cv <- paste0(path0, "Comparaison/mcmc_cv/ZB_delta", Delta[i], ".pdf")
-  beta <- get_step_br(samp_betai, path_cv, 4)
+  beta <- get_step_br(samp_betai, path_cv, 3)
   path_cv <- paste0(path0, "Comparaison/mcmc_cv/order_delta", Delta[i], ".pdf")
   get_mcmc(samp_order, 0, path_cv)
   
@@ -281,6 +278,10 @@ for (i in 1:l) {
   ggsave(paste0(path0, "Comparaison/Delta_", Delta[i], ".png"), width= 13, height = 7)
 }
 
+
+for (i in 1:l) {
+  print(graph_comparing[[i]])
+}
 ### Variance a prior pour BR +++ importante 
 ##--------------------------------------------------------@
 var_prior <- data.frame( var_order_prior = prior_var_order$X0, var_BR_prior = prior_var$X0, ages = variance$ages) %>% pivot_longer(!ages)
